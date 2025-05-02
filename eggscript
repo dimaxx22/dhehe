@@ -1,0 +1,81 @@
+if not game:IsLoaded() then game.Loaded:Wait() end
+
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Player = Players.LocalPlayer
+local Character = Player.Character or Player.CharacterAdded:Wait()
+local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
+local EggCollected = ReplicatedStorage.Remotes.Gameplay.CoinCollected
+local RoundStart = ReplicatedStorage.Remotes.Gameplay.RoundStart
+local RoundEnd = ReplicatedStorage.Remotes.Gameplay.RoundEndFade
+local start_position = HumanoidRootPart.CFrame
+local farming = true
+local bag_full = false
+
+local VirtualUser = game:GetService("VirtualUser")
+Player.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
+end)
+
+local function get_nearest_egg()
+    local closest_egg, min_distance = nil, math.huge
+    for _, model in pairs(workspace:GetChildren()) do
+        if model:FindFirstChild("CoinContainer") then
+            for _, egg in pairs(model.CoinContainer:GetChildren()) do
+                if egg:GetAttribute("CoinID") == "Egg" and egg:FindFirstChild("TouchInterest") then
+                    local distance = (HumanoidRootPart.Position - egg.Position).Magnitude
+                    if distance < min_distance then
+                        closest_egg = egg
+                        min_distance = distance
+                    end
+                end
+            end
+        end
+    end
+    return closest_egg, min_distance
+end
+
+local function tween_to(position, duration)
+    local tween = TweenService:Create(
+        HumanoidRootPart,
+        TweenInfo.new(duration, Enum.EasingStyle.Linear),
+        {CFrame = position}
+    )
+    tween:Play()
+    return tween
+end
+
+EggCollected.OnClientEvent:Connect(function(egg_type, current, max)
+    if egg_type == "Egg" and current == max then
+        bag_full = true
+        tween_to(start_position, 2).Completed:Wait()
+        Player.Character.Humanoid.Health = 0
+        bag_full = false
+    end
+end)
+
+RoundStart.OnClientEvent:Connect(function()
+    farming = true
+end)
+
+RoundEnd.OnClientEvent:Connect(function()
+    farming = false
+end)
+
+while true do
+    if farming and not bag_full and Character and HumanoidRootPart then
+        local egg, distance = get_nearest_egg()
+        if egg then
+            if distance > 150 then
+                HumanoidRootPart.CFrame = egg.CFrame
+            else
+                local tween = tween_to(egg.CFrame, distance/20)
+                repeat task.wait() until not egg:FindFirstChild("TouchInterest") or not farming
+                tween:Cancel()
+            end
+        end
+    end
+    task.wait()
+end
